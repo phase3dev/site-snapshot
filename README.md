@@ -27,8 +27,8 @@ Browser automation tools (Puppeteer, Playwright, Selenium) are overkill for mirr
 
 ```bash
 # 1. Clone this repo
-git clone https://github.com/youruser/wget-mirror.git
-cd wget-mirror
+git clone https://github.com/youruser/wget-site-mirror.git
+cd wget-site-mirror
 
 # 2. Add your proxies (one per line)
 cat > proxies.txt << 'EOF'
