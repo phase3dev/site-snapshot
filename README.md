@@ -1,6 +1,8 @@
-# Site Snapshot
-
-## Overview
+<div align="center">
+  <img src="logo-128.png" alt="Site Snapshot Logo" width="128"/>
+  <h1>Site Snapshot</>
+  </h1>
+</div>
 
 A bash script for mirroring and creating recursive snapshots of static and semi-static websites using `wget`. Features include dynamic proxy and user agent rotation, full asset filtering and download, adjustable concurrency, multi-domain support, depth control, optional offline link conversion, archive creation, and detailed logging.
 
