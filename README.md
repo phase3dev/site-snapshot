@@ -1,200 +1,401 @@
-# wget-site-mirror
+# Site Snapshot
 
-A fast, simple bash script for cloning websites using `wget` with rotating proxies and user agents.
+## Overview
 
-## What it does
+A bash script for mirroring and creating snapshots of static and semi-static websites using `wget`, featuring rotating proxies, rotating user agents, optional offline link conversion, and a fallback discovery pass that recovers additional internal URLs from downloaded HTML.
 
-`mirror.sh` recursively downloads a website, including associated assets such as CSS, JavaScript, images, and fonts, while preserving the original directory structure. It is designed as a website mirroring tool, not a scraper. It does not use browser automation, headless Chrome, or bot-bypass trickery. It is simply reliable, time-tested `wget`, with a few practical enhancements.
+Designed to clone static templates, theme repositories, marketing pages, and other sites where HTML and assets are present in the server response. Useful for pulling styles, scripts, and media for local development (e.g., reusable blocks and components), preserving asset structure for inspection and adaptation, and archiving site sections for offline browsing or migration work.
 
-Browser automation tools (Puppeteer, Playwright, Selenium) are overkill for mirroring static or semi-static sites. `wget` is fast, lightweight, and available on virtually every Linux/macOS system. By rotating proxies and user agents and adding randomized delays, this script avoids the most common blocking mechanisms without resorting to anything exotic. In practice, with reasonable settings, it rarely gets blocked, even on larger sites.
+## Note: Static sites vs. JavaScript apps
+
+At its core, Site Snapshot is a controlled wrapper around `wget` that adds practical features such as proxy and user-agent rotation, scope management, logging, and state tracking.
+
+It includes a fallback discovery pass that may sometimes recover additional URLs from embedded content, but **it is not a browser crawler or scraper framework.** If the target site is primarily a JavaScript-rendered app, an SPA-only site, or relies on tabbed, virtualized, or lazy-loaded routes, a browser-capable crawler such as Playwright, Puppeteer, Crawlee, or Selenium will be necessary.
 
 ## Features
 
-- **Rotating proxies.** Randomly selects a proxy from `proxies.txt` on every request, rotating again on retry.
-- **Rotating user agents.** Randomly selects a user agent from `user_agents.txt` on every request.
-- **Full asset download.** Grabs page requisites (images, stylesheets, scripts, fonts) by default so cloned pages render correctly offline.
-- **Customizable asset filtering.** Skip asset types with `--no-assets`, or use `--reject` / `--accept` to block or allow specific file extensions (e.g., `--reject mp4,pdf,zip`).
-- **Retry with rotation.** Automatically retries on HTTP 403/429 with a fresh proxy and user agent.
-- **Randomized delays.** Configurable random wait between requests to avoid hammering servers.
-- **Adjustable concurrency.** Set a fixed number of parallel `wget` processes or let the script pick randomly (2 to 8).
-- **Recursive depth control.** Unlimited recursion by default, or set `--depth N` to limit.
-- **Multi-domain support.** Follow links across subdomains or related domains with `--domains`.
-- **Auto-zip.** Optionally archives the output when done (disable with `--no-zip`).
-- **Logging.** All output is timestamped and tee'd to a log file in the output directory.
-- **Single file, no dependencies.** Pure bash + `wget` + `zip`. Nothing to install.
+- **Rotating proxies.** Load proxies from `proxies.txt`, point to another file with `--proxies FILE`, or pass inline values with repeated `--proxy URL`. Randomly selects a proxy on every request, rotating again on retry.
+- **Rotating user agents.** Load user agents from `user_agents.txt`, point to another file with `--user-agents FILE`, or pass inline values with repeated `--user-agent STRING`. Randomly selects a user agent on every request and retry.
+- **Recursive mirroring with `wget`.** Uses `wget` for the core mirror pass.
+- **Full asset download.** Grabs page requisites by default so mirrored pages render locally.
+- **Optional offline link conversion.** `--convert-links` rewrites local links for easier offline browsing.
+- **Fallback discovery pass.** Scans downloaded HTML for additional in-scope URLs and feeds them back into `wget`.
+- **Path scoping for discovered URLs.** `--scope-prefixes` prevents discovery from exploding outside the section you care about.
+- **Asset filtering.** Use `--no-assets`, `--reject`, or `--accept`.
+- **Retry support.** Retries failed requests with rotated proxy and user agent.
+- **Randomized delays.** Configurable fixed or ranged delays.
+- **Adjustable concurrency.** Parallel top-level URL jobs, not browser-style internal request concurrency.
+- **Depth control.** Unlimited by default, or cap with `--depth`.
+- **Multi-domain support.** Follow only the domains you allow.
+- **Zip packaging.** Optional archive creation at the end.
+- **Logging and state tracking.** Logs to `snapshot.log` and stores visited/discovered URL lists in `.snapshot_state/`.
 
 ## Quick start
 
 ```bash
-# 1. Clone this repo
-git clone https://github.com/youruser/wget-site-mirror.git
-cd wget-site-mirror
+# 1. Clone the repo
+git clone https://github.com/phase3dev/site-snapshot.git
+cd site-snapshot
 
-# 2. Add your proxies (one per line)
+# 2. Make it executable
+chmod +x snapshot.sh
+
+# 3. Run it
+./snapshot.sh --url https://example.com
+```
+
+Output lands in `./snapshot_output/example.com/` by default.
+
+## Proxies and user agents
+
+Adding proxies and user agents is optional. If no proxy list or file is found, requests go out on your own IP with a warning. If no user agent list or file is found, a default user agent string is used.
+
+For small sites or sites you own, this should work fine. For larger or third-party sites, rotating proxies and a diverse user agent list help avoid rate limiting.
+
+The script supports both file-based and inline proxy/user-agent input.
+
+## Proxy input formats
+
+### 1. File-based
+
+`proxies.txt` supports values accepted by `wget` through proxy environment variables. For example:
+
+```text
+http://host:port
+http://user:password@host:port
+socks5://user:password@host:port
+```
+
+Blank lines and lines beginning with `#` are ignored.
+
+### 2. Inline CLI values
+
+Repeat `--proxy` as needed:
+
+```bash
+./snapshot.sh \
+  --url https://example.com \
+  --proxy http://host1:port \
+  --proxy http://user:password@host2:port
+```
+
+## User-agent input formats
+
+### 1. File-based
+
+`user_agents.txt` should contain one user-agent string per line. Blank lines and lines beginning with `#` are ignored.
+
+Example:
+
+```text
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0
+```
+
+### 2. Inline CLI values
+
+Repeat `--user-agent` as needed:
+
+```bash
+./snapshot.sh \
+  --url https://example.com \
+  --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+  --user-agent "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0"
+```
+
+### Combining inline and file-based proxies and user agents
+
+The script supports concurrent use of file-based and inline proxy/user-agent sources:
+
+```bash
+./snapshot.sh \
+  --url https://example.com \
+  --proxies /path/to/proxies.txt \
+  --proxy http://extra-proxy.example.com:8080 \
+  --user-agents /path/to/user_agents.txt \
+  --user-agent "Mozilla/5.0 custom test agent"
+```
+
+### Location of proxy and user agent files
+
+By default, the script looks for `proxies.txt` and `user_agents.txt` in the same directory as `snapshot.sh`. You can also point to files elsewhere with the `--proxies` and `--user-agents` flags:
+
+```bash
+./snapshot.sh -u https://example.com --proxies /path/to/my_proxies.txt --user-agents /path/to/my_uas.txt
+```
+
+### Generating new proxy and user agent files
+
+In addition to using pre-existing external files, you can also create new  `proxies.txt` and `user_agents.txt` files through inline CLI:
+
+#### `proxies.txt`
+
+```bash
 cat > proxies.txt << 'EOF'
 http://user:pass@proxy1.example.com:8080
 http://user:pass@proxy2.example.com:8080
 socks5://user:pass@proxy3.example.com:1080
 EOF
+```
 
-# 3. Add user agent strings (one per line)
+#### `user_agents.txt`
+
+```bash
 cat > user_agents.txt << 'EOF'
 Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
 Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
 Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0
 Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0
 EOF
-
-# 4. Run it
-chmod +x mirror.sh
-./mirror.sh --url https://example.com
 ```
-
-Output lands in `./mirror_output/example.com/` by default.
 
 ## Usage
 
+```bash
+./snapshot.sh [OPTIONS]
 ```
-./mirror.sh [OPTIONS]
 
-Required:
-  -u, --url URL             Target URL to mirror
+### Required
 
-Optional:
-  -d, --domains DOMAINS     Comma-separated domains to follow (default: extracted from URL)
-  -o, --output DIR          Output directory (default: ./mirror_output/<domain>)
-  -r, --retries N           Max retries per URL on failure (default: 5)
-  -c, --concurrency N       Max concurrent wget processes (default: random 2-8)
-  -w, --wait N [MAX]        Delay in seconds: one value = fixed, two = random range (default: 1 3)
-  --depth N                 Recursion depth (0 = unlimited, default: unlimited)
-  --no-assets               Skip downloading page assets (images, CSS, JS)
-  --reject TYPES            Comma-separated extensions to reject (e.g., mp4,pdf,zip)
-  --accept TYPES            Comma-separated extensions to accept (download only these)
-  --no-zip                  Skip creating zip archive after download
-  --robots-on               Respect robots.txt (see note below)
-  --proxies FILE            Path to proxy list file (default: proxies.txt in script dir)
-  --user-agents FILE        Path to user agent list file (default: user_agents.txt in script dir)
-  -h, --help                Show help
+```text
+-u, --url URL
+    Target URL to mirror
+```
+
+### Optional
+
+```text
+-d, --domains DOMAINS
+    Comma-separated domains to follow.
+    Default: extracted from --url.
+    Accepts bare domains or full URLs. Schemes and paths are stripped.
+
+-o, --output DIR
+    Output directory.
+    Default: ./snapshot_output/<domain>
+
+-r, --retries N
+    Max retries per URL on failure.
+    Default: 5
+
+-c, --concurrency N
+    Max parallel top-level URL jobs.
+    Default: random value between 2 and 8
+
+-w, --wait N [MAX]
+    Delay in seconds.
+    One value = fixed delay.
+    Two values = random range.
+    Default: 1 3
+
+--depth N
+    Recursion depth for wget.
+    0 = unlimited.
+    Default: unlimited
+
+--no-assets
+    Skip downloading page assets
+
+--reject TYPES
+    Comma-separated file extensions to reject
+
+--accept TYPES
+    Comma-separated file extensions to accept
+
+--convert-links
+    Convert local links for better offline browsing
+
+--discover-off
+    Disable fallback discovery pass
+
+--discover-passes N
+    Number of fallback discovery passes.
+    Default: 2
+
+--discover-limit N
+    Maximum number of new discovered URLs to attempt per pass.
+    Default: 2000
+
+--scope-prefixes PREFIXES
+    Optional comma-separated path prefixes to keep discovery in scope.
+    Example: /docs,/blog
+
+--no-zip
+    Skip zip archive creation
+
+--robots-on
+    Respect robots.txt
+
+--proxies FILE
+    Path to proxy list file.
+    Default: proxies.txt in the script directory
+
+--proxy URL
+    Inline proxy value.
+    Repeat this option to provide multiple proxies.
+
+--user-agents FILE
+    Path to user-agent list file.
+    Default: user_agents.txt in the script directory
+
+--user-agent STRING
+    Inline user-agent value.
+    Repeat this option to provide multiple user agents.
+
+-h, --help
+    Show help
 ```
 
 ## Examples
 
-Mirror a subdomain, including assets hosted on the parent domain:
+Mirror a basic static site:
+
 ```bash
-./mirror.sh -u https://docs.example.com -d docs.example.com,example.com
+./snapshot.sh --url https://example.com
 ```
 
-Mirror a site with assets spread across multiple domains:
+Mirror a docs section and improve local browsing:
+
 ```bash
-./mirror.sh -u https://themes.example.com -d themes.example.com,example.com,cdn.example.com
+./snapshot.sh \
+  --url https://docs.example.com/guide/ \
+  --domains docs.example.com,cdn.example.com \
+  --convert-links
 ```
 
-Mirror HTML only, skip large media files:
+Mirror a site section and keep fallback discovery inside known paths:
+
 ```bash
-./mirror.sh -u https://example.com --reject mp4,mov,avi,mkv,zip,tar.gz,pdf
+./snapshot.sh \
+  --url https://example.com/docs/ \
+  --domains example.com \
+  --scope-prefixes /docs,/assets/docs
 ```
 
-Shallow clone (2 levels deep), no zip:
+Mirror HTML while skipping large media:
+
 ```bash
-./mirror.sh -u https://example.com --depth 2 --no-zip
+./snapshot.sh \
+  --url https://example.com \
+  --reject mp4,mov,avi,mkv,zip,pdf
 ```
 
-Slow and polite (5 to 10 second delays, 2 concurrent):
+Use inline proxies and inline user agents for a one-off run:
+
 ```bash
-./mirror.sh -u https://example.com -w 5 10 -c 2 --robots-on
+./snapshot.sh \
+  --url https://example.com \
+  --proxy http://user:pass@proxy1.example.com:8080 \
+  --proxy socks5://proxy2.example.com:1080 \
+  --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+  --user-agent "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0"
 ```
+
+Slow and polite:
+
+```bash
+./snapshot.sh \
+  --url https://example.com \
+  --wait 5 10 \
+  --concurrency 2 \
+  --robots-on
+```
+
+Disable fallback discovery entirely:
+
+```bash
+./snapshot.sh \
+  --url https://example.com \
+  --discover-off
+```
+
+## How fallback discovery works
+
+After the initial `wget` pass, the script can scan downloaded HTML files and extract additional candidate URLs from raw page content.
+
+This can be helpful with semi-static docs sites and other sites that do not expose all routes as normal `<a href="...">` links but still embed them somewhere in HTML, JSON, canonical metadata, preload hints, or inline script/config blobs.
+
+The discovery pass:
+
+1. scans mirrored HTML files
+2. extracts candidate URLs and root-relative paths
+3. normalizes and deduplicates them
+4. filters them to your allowed domains and optional scope prefixes
+5. feeds them back into `wget` for additional passes
+
+## Troubleshooting
+
+### Styles or assets are missing
+
+This is usually a domain issue.
+
+Many sites serve HTML from one domain and assets from another, such as a CDN or parent domain. Add every required asset domain to `--domains`.
+
+Example:
+
+```bash
+./snapshot.sh \
+  --url https://themes.example.com \
+  --domains themes.example.com,example.com,cdn.example.com
+```
+
+### The script used the wrong domains from `--domains`
+
+The script supports passing either bare domains or full URLs and will normalize them. All of these are accepted:
+
+```bash
+--domains example.com,cdn.example.com
+--domains https://example.com/docs/,https://cdn.example.com/assets/
+```
+
+### The script downloaded only one page
+
+Usually one of these is true:
+
+1. The site is a JS-heavy app and does not expose crawlable links in raw HTML
+2. The `--domains` list is too narrow
+3. The `--scope-prefixes` are too restrictive
+4. The page really is a single giant HTML document
+
+Potential fixes:
+
+- Inspect the downloaded HTML and search for internal URLs
+- Broaden `--domains` if assets or pages live on other allowed domains
+- Remove or widen `--scope-prefixes`
+- Increase `--discover-passes`
 
 ## File structure
 
-```
-wget-mirror/
-├── mirror.sh           # The script
-├── proxies.txt         # Your proxy list, one per line (optional)
-├── user_agents.txt     # Your user agent strings, one per line (optional)
+```text
+site-snapshot/
+├── snapshot.sh
+├── proxies.txt
+├── user_agents.txt
 ├── README.md
-└── mirror_output/      # Created automatically
-    └── example.com/    # Mirrored site files
-        └── mirror.log  # Timestamped log
+└── snapshot_output/
+    └── example.com/
+        ├── snapshot.log
+        └── .snapshot_state/
+            ├── visited_urls.txt
+            ├── discovered_urls.txt
+            └── seed_urls.txt
 ```
-
-## Proxy format
-
-`proxies.txt` supports any format `wget` accepts via the `https_proxy` / `http_proxy` environment variables:
-
-```
-http://host:port
-http://user:password@host:port
-socks5://user:password@host:port
-```
-
-Residential or datacenter proxies both work. The script rotates to a new proxy on every request and on every retry, so a larger pool reduces the chance of any single IP getting flagged.
-
-## Proxies and user agents
-
-Both files are **optional**. The script works fine without either one. That said, there will be a much greater chance of being blocked without using one or both options.
-
-By default, the script looks for `proxies.txt` and `user_agents.txt` in the same directory as `mirror.sh`. You can point to files elsewhere with the `--proxies` and `--user-agents` flags:
-
-```bash
-./mirror.sh -u https://example.com --proxies /path/to/my_proxies.txt --user-agents /path/to/my_uas.txt
-```
-
-If no proxy file is found, requests go out on your own IP with a warning. If no user agent file is found, a default Chrome user agent string is used. This means the simplest possible invocation is just:
-
-```bash
-./mirror.sh -u https://example.com
-```
-
-No extra files needed. For small sites or sites you own, this is perfectly fine. For larger or third-party sites, you'll want proxies and a diverse user agent list to avoid getting rate-limited.
-
-## How it avoids blocks
-
-This script is intentionally simple by design. This is not a stealth tool and does not attempt to defeat sophisticated bot protection (Cloudflare turnstile, Akamai Bot Manager, etc.). It works well against basic rate limiting and IP-based blocking due to:
-
-1. **Proxy rotation.** Each request can come from a different IP.
-2. **User agent rotation.** No single fingerprint pattern.
-3. **Randomized delays.** Requests don't arrive in a machine-like cadence.
-4. **No cookies/keep-alive.** Each request is stateless, reducing fingerprinting surface.
-
-## Missing styles or broken assets after cloning
-
-This is the most common issue people run into, and it's almost always a domain problem.
-
-Many sites serve their HTML from one domain but load CSS, JS, images, and fonts from a different domain or subdomain. For example, you might be cloning `themes.example.com`, but the stylesheets are hosted on `cdn.example.com` or even just `example.com`. By default, `wget --no-parent` restricts downloads to the domain in your `--url`, so those cross-domain assets get skipped and you end up with unstyled pages.
-
-**The fix:** use `--domains` to include every domain the site loads assets from.
-
-```bash
-# You want to clone themes.example.com, but assets live on example.com and cdn.example.com
-./mirror.sh -u https://themes.example.com -d themes.example.com,example.com,cdn.example.com
-```
-
-**How to figure out which domains you need:**
-
-1. Open the site in a browser and open DevTools (F12)
-2. Go to the Network tab and reload the page
-3. Look at the domains in the request list. You'll see where CSS, JS, fonts, and images are coming from.
-4. Add all of those domains to your `--domains` list
-
-Alternatively, clone the site first, open the local HTML files, and check whether the styling loads. If pages look unstyled or broken, view the page source, find the `<link>` and `<script>` tags, and note what domains they reference. Then re-run with those domains added.
-
-This pattern of setting `--url` to the subdomain or subfolder you want and then broadening `--domains` to include the parent or CDN domain is the intended workflow for partial site clones.
 
 ## Responsible use
 
-**Please respect website owners and their terms of service.**
+Please respect website owners and their terms of service.
 
-- **Check robots.txt** before mirroring. The script disables robots.txt by default for flexibility, but you should review it manually and consider using `--robots-on` if the site's robots.txt is reasonable.
-- **Don't mirror sites you don't have permission to clone** for redistribution or commercial use.
-- **Use polite settings.** Increase delay intervals, reduce concurrency, and respect rate limits for sites you don't own.
-- **This script is provided as-is for legitimate use cases like local development reference, offline browsing, archival, and site migration.** Redistributing copyrighted content you've mirrored is your responsibility, not the tool's.
+- Check robots.txt before mirroring
+- Use polite settings when mirroring sites you do not own
+- Do not redistribute copyrighted mirrored content unless you have the proper permissions
 
 ## Requirements
 
-- `bash` 4+
-- `wget`
-- `zip` (optional, for auto-archiving)
-- A proxy list (optional but recommended)
+- bash 4+
+- wget
+- zip (optional)
+- proxy list (optional)
+- user-agent list (optional)
 
 ## License
 
