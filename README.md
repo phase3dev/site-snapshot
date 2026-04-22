@@ -2,7 +2,7 @@
 
 ## Overview
 
-A bash script for mirroring and creating snapshots of static and semi-static websites using `wget`, featuring rotating proxies, rotating user agents, optional offline link conversion, and a fallback discovery pass that recovers additional internal URLs from downloaded HTML.
+A bash script for mirroring and creating recursive snapshots of static and semi-static websites using `wget`, featuring rotating proxies, rotating user agents, optional offline link conversion, and a fallback discovery pass that recovers additional internal URLs from downloaded HTML.
 
 Designed to clone static templates, theme repositories, marketing pages, and other sites where HTML and assets are present in the server response. Useful for pulling styles, scripts, and media for local development (e.g., reusable blocks and components), preserving asset structure for inspection and adaptation, and archiving site sections for offline browsing or migration work.
 
