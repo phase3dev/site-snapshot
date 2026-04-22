@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
-# Site Snapshot - Static website mirroring with wget, rotating proxies/user agents,
-#                 and fallback link discovery from downloaded HTML.
+# snapshot.sh - Static website snapshots with wget, rotating proxies/user agents,
+#               and fallback link discovery from downloaded HTML.
 #
 # Usage:
-#   ./mirror.sh [OPTIONS]
+#   ./snapshot.sh [OPTIONS]
 #
 # Options:
 #   -u, --url URL              Target URL to mirror (required)
 #   -d, --domains DOMAINS      Comma-separated domains to follow
 #                              Default: extracted from URL
 #                              Accepts bare domains or full URLs; paths/schemes are stripped
-#   -o, --output DIR           Output directory (default: ./mirror_output/<domain>)
+#   -o, --output DIR           Output directory (default: ./snapshot_output/<domain>)
 #   -r, --retries N            Max retries per URL on failure (default: 5)
 #   -c, --concurrency N        Max concurrent wget jobs (default: random 2-8)
 #   -w, --wait N [MAX]         Delay in seconds: one value = fixed, two = random range
@@ -655,11 +655,11 @@ split_csv_to_array "$DOMAINS" DOMAIN_ARRAY
 parse_scope_prefixes
 
 if [[ -z "$SAVE_DIR" ]]; then
-    SAVE_DIR="./mirror_output/${DOMAIN}"
+    SAVE_DIR="./snapshot_output/${DOMAIN}"
 fi
 
-LOG_FILE="${SAVE_DIR}/mirror.log"
-STATE_DIR="${SAVE_DIR}/.mirror_state"
+LOG_FILE="${SAVE_DIR}/snapshot.log"
+STATE_DIR="${SAVE_DIR}/.snapshot_state"
 VISITED_URLS_FILE="${STATE_DIR}/visited_urls.txt"
 DISCOVERED_URLS_FILE="${STATE_DIR}/discovered_urls.txt"
 SEED_URLS_FILE="${STATE_DIR}/seed_urls.txt"
@@ -705,7 +705,7 @@ touch "$VISITED_URLS_FILE" "$DISCOVERED_URLS_FILE" "$SEED_URLS_FILE"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-log_message "=== Mirror session started ==="
+log_message "=== Snapshot session started ==="
 log_message "Target: $BASE_URL"
 log_message "Domains: $DOMAINS"
 log_message "Output: $SAVE_DIR"
@@ -775,5 +775,5 @@ if [[ "$NO_ZIP" == false ]]; then
     fi
 fi
 
-log_message "=== Mirror session finished ==="
+log_message "=== Snapshot session finished ==="
 exit 0
