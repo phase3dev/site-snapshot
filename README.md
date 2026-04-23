@@ -1,10 +1,6 @@
-<div align="center">
-  <img src="./repo_assets/ss-icon.png" srcset="./repo_assets/ss-icon@2x.png 2x" alt="Site Snapshot icon" width="128" />
-  <br />
-  <h1>Site Snapshot</h1>
-</div>
+# Site Snapshot
 
-A bash script for mirroring and creating recursive snapshots of static and semi-static websites using `wget`. Features include dynamic proxy and user agent rotation, full asset filtering and download, adjustable concurrency, multi-domain support, depth control, optional offline link conversion, archive creation, and detailed logging.
+A Bash script for mirroring and creating recursive snapshots of static and semi-static websites using `wget`. Features include dynamic proxy and user agent rotation, full asset filtering and download, adjustable concurrency, multi-domain support, depth control, optional offline link conversion, archive creation, and detailed logging.
 
 Designed to clone static templates, theme repositories, marketing pages, and other sites where HTML and assets are present in the server response. Useful for pulling styles, scripts, and media for local development (e.g., reusable blocks and components), preserving asset structure for inspection and adaptation, and archiving site sections for offline browsing or migration work.
 
