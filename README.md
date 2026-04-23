@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./.assets/ss-icon.png" srcset="./.assets/ss-icon@2x.png 2x" alt="Site Snapshot icon" width="128">
+  <img src="./repo_assets/ss-icon.png" srcset="./repo_assets/ss-icon@2x.png 2x" alt="Site Snapshot icon" width="128">
 </p>
 
 # Site Snapshot
